@@ -1,0 +1,103 @@
+/*
+  VSCode User Settings
+*/
+{
+  // Core
+  "github.copilot.nextEditSuggestions.enabled": true,
+  "editor.minimap.enabled": false,
+  "security.workspace.trust.enabled": true,
+  "emmet.triggerExpansionOnTab": true,
+  "files.autoSave": "off",
+  "update.mode": "none",
+  "extensions.ignoreRecommendations": true,
+  // Plugins & Themes
+  "material-icon-theme.hidesExplorerArrows": true,
+  "git.decorations.enabled": true,
+  "window.zoomLevel": 3,
+  "window.customTitleBarVisibility": "never",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "scm.diffDecorations": "all",
+  // Workbench
+  "workbench.activityBar.location": "hidden",
+  "workbench.editor.showTabs": "multiple",
+  "workbench.statusBar.visible": true,
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false,
+  "workbench.sideBar.location": "right",
+  "workbench.tree.enableStickyScroll": false,
+  "workbench.tree.renderIndentGuides": "none",
+  "workbench.tree.indent": 8,
+  "workbench.iconTheme": "material-icon-theme",
+  // Explorer
+  "explorer.compactFolders": true,
+  "explorer.confirmDragAndDrop": false,
+  "explorer.confirmDelete": false,
+  "explorer.decorations.badges": false,
+  // Editor
+  "editor.multiCursorModifier": "alt",
+  "editor.cursorBlinking": "blink",
+  "editor.cursorStyle": "line",
+  "editor.fontSize": 14,
+  "editor.fontLigatures": false,
+  "editor.lineHeight": 1.8,
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "comment",
+        "settings": {
+          "fontStyle": "italic"
+        }
+      }
+    ]
+  },
+  "editor.stickyScroll.enabled": false,
+  "editor.colorDecorators": true,
+  "editor.codeLens": true,
+  "editor.links": true,
+  "editor.matchBrackets": "never",
+  "editor.parameterHints.enabled": false,
+  "editor.lightbulb.enabled": "off",
+  "editor.hover.enabled": "on",
+  "editor.lineNumbers": "on",
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "editor.showFoldingControls": "mouseover",
+  "editor.guides.indentation": false,
+  "editor.renderWhitespace": "none",
+  "editor.renderLineHighlight": "none",
+  "editor.occurrencesHighlight": "multiFile",
+  "editor.selectionHighlight": true,
+  "editor.scrollbar.horizontal": "visible",
+  "editor.scrollbar.vertical": "visible",
+  "editor.overviewRulerBorder": false,
+  "editor.hideCursorInOverviewRuler": true,
+  "editor.mouseWheelZoom": true,
+  "editor.quickSuggestions": {
+    "other": "on",
+    "comments": "off",
+    "strings": "on"
+  },
+  "editor.suggestOnTriggerCharacters": true,
+  "editor.tabCompletion": "on",
+  "editor.snippetSuggestions": "top",
+  "console-ninja.featureSet": "Community",
+  "editor.suggest.snippetsPreventQuickSuggestions": false,
+  "editor.quickSuggestionsDelay": 10,
+  "window.customMenuBarAltFocus": false,
+  "window.commandCenter": false,
+  "workbench.layoutControl.enabled": false,
+  "window.menuBarVisibility": "hidden",
+  "git.autofetch": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "diffEditor.ignoreTrimWhitespace": false,
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "window.title": "${rootName} - ${activeEditorShort}",
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
