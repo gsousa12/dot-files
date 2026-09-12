@@ -1,0 +1,227 @@
+{
+  "main": {
+    "id": "b9fd4124a7db064f",
+    "type": "split",
+    "children": [
+      {
+        "id": "686d09abc67c8d62",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ef76f8d01f2efaaf",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Contents.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Contents"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "3befc3da0e6b4c77",
+    "type": "split",
+    "children": [
+      {
+        "id": "fa11e3e669332bc0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "04ee3c3ecbefa506",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "01c513eb38004101",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "a14068d8922f66f3",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "7e78095340df0263",
+    "type": "split",
+    "children": [
+      {
+        "id": "f54478f3ae49b17c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "18a2cd7e7ab43b37",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Lawgic/Credentials.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Credentials"
+            }
+          },
+          {
+            "id": "47d9766ea2d27d6a",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Lawgic/Credentials.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Credentials"
+            }
+          },
+          {
+            "id": "44739be181990664",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "25518977f34efee2",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "d4c9da13dc16eed9",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Lawgic/Credentials.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Credentials"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "obsidian-excalidraw-plugin:New drawing": false,
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "ef76f8d01f2efaaf",
+  "lastOpenFiles": [
+    "From Buildin a web server from scratch.md",
+    "Distributed Systems/Saga Pattern.md",
+    "Web/DNS.md",
+    "Web/HTTP.md",
+    "Web/UDP.md",
+    "Web/TLS.md",
+    "Web/TCP.md",
+    "Web/SSL.md",
+    "Web/Proxy.md",
+    "Contents.md",
+    "S.D.md",
+    "English/Words to lear.md",
+    "Excalidraw/Drawing 2026-05-23 09.19.33.excalidraw.md",
+    "Excalidraw/Drawing 2026-05-15 13.31.03.excalidraw.md",
+    "Excalidraw/Drawing 2026-05-23 14.24.06.excalidraw.md",
+    "Excalidraw",
+    "Web/Web Protocol.md",
+    "Web/OSI Model.md",
+    "Linux/Tips.md",
+    "Web/0.1 - Topics Sugestions.md",
+    "English/00 - Words to learn.md",
+    "English/0.0 - Contents.md",
+    "Distributed Systems/0.0 - Contents.md",
+    "Distributed Systems/0.2 - Articles.md",
+    "Blockchain/0.0 - Contents.md",
+    "Blockchain/0.1 - Articles.md",
+    "Blockchain/0.2 - Videos.md",
+    "Study/Web/1 -",
+    "Pessoal Organization/Untitled",
+    "Pessoal Organization",
+    "Study/Linux",
+    "Study/Write",
+    "Study/Distributed Systems",
+    "Study/Sem título",
+    "Work",
+    "Study/English",
+    "Sem título.canvas"
+  ]
+}
