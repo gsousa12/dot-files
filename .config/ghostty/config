@@ -1,0 +1,17 @@
+# Personal terminal defaults for Ghostty.
+# The font becomes active after installing a Nerd Font; Ghostty falls back safely
+# until then.
+font-family = JetBrains Mono
+font-size = 13
+
+window-padding-x = 12
+window-padding-y = 10
+window-padding-balance = true
+background-opacity = 0.96
+cursor-style = bar
+cursor-style-blink = false
+
+# Useful integrations without turning the shell configuration into a framework.
+shell-integration-features = cursor,sudo,title
+clipboard-read = allow
+clipboard-write = allow
