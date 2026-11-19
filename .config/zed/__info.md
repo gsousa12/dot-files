@@ -2,7 +2,8 @@
 
 - [`settings.json`](./settings.json) contém as preferências globais do editor.
 - [`keymap.json`](./keymap.json) configura os atalhos de teclado.
-- [`tasks.json`](./tasks.json) define a tarefa para abrir um terminal externo na pasta do arquivo atual.
+- [`tasks.json`](./tasks.json) define a tarefa para abrir um terminal externo na pasta do arquivo atual e as tarefas `feat: …` (menu, nova feature, abrir, adicionar repo, up, down, status, sync).
+- Os atalhos `Alt+Shift+F` (menu), `Alt+Shift+N` (nova feature), `Alt+Shift+U` (rodar serviços) e `Alt+Shift+D` (parar) disparam as tarefas do feat. Veja o [guia do feat](../feat/GUIA.md).
 - [`settings_backup.json`](./settings_backup.json) guarda uma versão anterior das preferências que você pode comparar com `settings.json` ou usar para restaurá-las.
 
 ## Aplicar no Linux

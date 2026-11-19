@@ -8,5 +8,73 @@
     "show_command": false,
     "allow_concurrent_runs": true,
     "use_new_terminal": false
+  },
+  {
+    "label": "feat: menu",
+    "command": "feat menu",
+    "use_new_terminal": true,
+    "reveal": "always",
+    "hide": "on_success",
+    "show_command": false,
+    "show_summary": false
+  },
+  {
+    "label": "feat: nova feature",
+    "command": "feat new",
+    "use_new_terminal": true,
+    "reveal": "always",
+    "hide": "on_success",
+    "show_command": false
+  },
+  {
+    "label": "feat: abrir feature",
+    "command": "feat open",
+    "use_new_terminal": true,
+    "reveal": "always",
+    "hide": "always",
+    "show_command": false,
+    "show_summary": false
+  },
+  {
+    "label": "feat: adicionar repo à feature",
+    "command": "feat add",
+    "use_new_terminal": true,
+    "reveal": "always",
+    "hide": "on_success",
+    "show_command": false
+  },
+  {
+    "label": "feat: rodar serviços (up)",
+    "command": "feat up",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "reveal_target": "center",
+    "hide": "never",
+    "show_command": false,
+    "show_summary": false
+  },
+  {
+    "label": "feat: parar serviços (down)",
+    "command": "feat down",
+    "reveal": "no_focus",
+    "hide": "on_success",
+    "show_command": false
+  },
+  {
+    "label": "feat: status",
+    "command": "feat status",
+    "use_new_terminal": false,
+    "reveal": "always",
+    "hide": "never",
+    "show_command": false
+  },
+  {
+    "label": "feat: sync com a base",
+    "command": "feat sync",
+    "use_new_terminal": false,
+    "reveal": "always",
+    "hide": "never",
+    "show_command": false
   }
 ]

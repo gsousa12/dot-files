@@ -13,3 +13,7 @@ ln -sT -- "$repo/.config/shell/gitwho.sh" "$HOME/.config/shell/gitwho.sh"
 ```
 
 Abra um novo Zsh ou rode `source ~/.config/shell/gitwho.sh` na sessão atual. Entre em um repositório Git e rode `gitwho`.
+
+## `feat.zsh`
+
+[`feat.zsh`](./feat.zsh) adiciona o autocomplete do comando `feat` e a função `fcd`, que entra na pasta de uma feature. O `.zshrc` carrega o arquivo de `~/.config/shell/feat.zsh`, e o link é criado pelo [instalador do feat](../feat/__info.md).

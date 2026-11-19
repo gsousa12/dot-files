@@ -160,6 +160,8 @@ fi
 
 # Funções compartilhadas (gitwho)
 [ -f ~/.config/shell/gitwho.sh ] && source ~/.config/shell/gitwho.sh
+# feat: worktrees por feature (autocomplete + fcd)
+[ -f ~/.config/shell/feat.zsh ] && source ~/.config/shell/feat.zsh
 
 # bun completions
 [ -s "/home/gabriel/.bun/_bun" ] && source "/home/gabriel/.bun/_bun"

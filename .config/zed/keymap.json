@@ -11,7 +11,11 @@
         {
           "task_name": "Abrir terminal externo na pasta do arquivo"
         }
-      ]
+      ],
+      "alt-shift-f": ["task::Spawn", { "task_name": "feat: menu" }],
+      "alt-shift-n": ["task::Spawn", { "task_name": "feat: nova feature" }],
+      "alt-shift-u": ["task::Spawn", { "task_name": "feat: rodar serviços (up)" }],
+      "alt-shift-d": ["task::Spawn", { "task_name": "feat: parar serviços (down)" }]
     }
   },
   {
