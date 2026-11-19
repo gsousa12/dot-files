@@ -1,0 +1,23 @@
+[
+  {
+    "context": "Workspace",
+    "bindings": {
+      "ctrl-shift-e": "project_panel::ToggleFocus",
+      "ctrl-shift-q": "git_panel::ToggleFocus",
+      "ctrl-shift-x": "zed::Extensions",
+      "ctrl-shift-f": "pane::DeploySearch",
+      "ctrl-alt-shift-t": [
+        "task::Spawn",
+        {
+          "task_name": "Abrir terminal externo na pasta do arquivo"
+        }
+      ]
+    }
+  },
+  {
+    "context": "ProjectPanel",
+    "bindings": {
+      "ctrl-left": "project_panel::CollapseAllEntries"
+    }
+  }
+]

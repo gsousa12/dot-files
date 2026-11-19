@@ -1,0 +1,12 @@
+[
+  {
+    "label": "Abrir terminal externo na pasta do arquivo",
+    "command": "/home/gabriel/.local/bin/zed-open-external-terminal",
+    "reveal": "never",
+    "hide": "always",
+    "show_summary": false,
+    "show_command": false,
+    "allow_concurrent_runs": true,
+    "use_new_terminal": false
+  }
+]
