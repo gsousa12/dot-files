@@ -1,0 +1,587 @@
+#!/usr/bin/env bash
+# feat — uma pasta por feature, com uma git worktree por repo.
+# Guia: ~/.config/feat/__info.md · Para LLMs: ~/.config/feat/AGENTS.md
+set -euo pipefail
+
+FEAT_BIN="$(readlink -f "${BASH_SOURCE[0]}")"
+FEAT_CONFIG_DIR="${FEAT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/feat}"
+FEAT_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/feat"
+FEAT_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/feat"
+RUNNING_FILE="$FEAT_STATE_DIR/running"
+
+if [[ -t 1 ]]; then B=$'\e[1m' G=$'\e[32m' Y=$'\e[33m' R=$'\e[31m' C=$'\e[36m' D=$'\e[2m' N=$'\e[0m'
+else B='' G='' Y='' R='' C='' D='' N=''; fi
+info() { printf '%s\n' "${B}==>${N} $*"; }
+ok()   { printf '  %s\n' "${G}✓${N} $*"; }
+warn() { printf '  %s\n' "${Y}!${N} $*" >&2; }
+die()  { printf '%s\n' "${R}✗${N} $*" >&2; exit 1; }
+trim() { local s=$1; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+need() { command -v "$1" >/dev/null || die "'$1' não encontrado. Rode: feat doctor"; }
+
+# ── perfil ──────────────────────────────────────────────────────────────────
+# Um perfil = um projeto/emprego: ~/.config/feat/<perfil>/{project.conf,repos.conf}
+load_profile() {
+  local p=${1:-${FEAT_PROFILE:-}}
+  [[ -z $p && -f $FEAT_CONFIG_DIR/default-profile ]] && p=$(<"$FEAT_CONFIG_DIR/default-profile")
+  p=$(trim "$p")
+  [[ -n $p ]] || die "Nenhum perfil. Crie $FEAT_CONFIG_DIR/default-profile com o nome do perfil."
+  PROFILE=$p PROFILE_DIR=$FEAT_CONFIG_DIR/$p
+  [[ -f $PROFILE_DIR/project.conf ]] || die "Perfil '$p' sem $PROFILE_DIR/project.conf"
+  # valores padrão (project.conf sobrescreve)
+  REPOS_ROOT='' SCAN_DEPTH=3 FEATURES_DIR="$HOME/features" DEFAULT_BASE=develop
+  ID_PREFIX='' FEATURE_PREFIX=feature/ FIX_PREFIX=fix/ SYNC_STRATEGY=merge OPEN_CMD='zed -n'
+  IGNORE_REPOS=() ENV_DIR=''
+  # shellcheck source=/dev/null
+  source "$PROFILE_DIR/project.conf"
+  [[ -d $REPOS_ROOT ]] || die "REPOS_ROOT inválido em $PROFILE_DIR/project.conf: '$REPOS_ROOT'"
+  ENV_DIR=${ENV_DIR:-$FEAT_DATA_DIR/$p/env}
+}
+
+# repos.conf: "repo | base | run" — só exceções. "-" = automático, run "none" = não sobe.
+repo_conf() { # $1=repo $2=base|run
+  local f=$PROFILE_DIR/repos.conf name base run v
+  [[ -f $f ]] || return 0
+  while IFS='|' read -r name base run; do
+    name=$(trim "$name"); [[ -z $name || $name == \#* || $name != "$1" ]] && continue
+    case $2 in base) v=$(trim "$base") ;; run) v=$(trim "${run:-}") ;; esac
+    [[ $v == - ]] && v=''
+    printf '%s' "$v"; return 0
+  done <"$f"
+}
+
+# ── repos ───────────────────────────────────────────────────────────────────
+repo_index() { # "nome|caminho" de cada repo principal sob REPOS_ROOT
+  local dir name
+  find "$REPOS_ROOT" -mindepth 2 -maxdepth $((SCAN_DEPTH + 1)) -name node_modules -prune -o -name .git -type d -print 2>/dev/null |
+    sed 's|/\.git$||' | sort | while IFS= read -r dir; do
+      name=${dir##*/}
+      [[ " ${IGNORE_REPOS[*]} " == *" $name "* ]] && continue
+      printf '%s|%s\n' "$name" "$dir"
+    done
+}
+
+resolve_repo() { # nome exato ou trecho único -> "nome|caminho"
+  local q=$1 idx hits
+  idx=$(repo_index)
+  hits=$(awk -F'|' -v q="$q" '$1==q' <<<"$idx")
+  [[ -z $hits ]] && hits=$(awk -F'|' -v q="$q" 'index($1,q)' <<<"$idx")
+  [[ -n $hits ]] || die "Repo '$q' não encontrado em $REPOS_ROOT (veja: feat repos)"
+  (($(wc -l <<<"$hits") == 1)) || die "'$q' é ambíguo: $(cut -d'|' -f1 <<<"$hits" | tr '\n' ' ')"
+  printf '%s' "$hits"
+}
+
+pick_repos() { # fzf multi-seleção; $1 = nomes a esconder
+  need fzf
+  repo_index | awk -F'|' -v skip=" $1 " -v root="$REPOS_ROOT/" '
+    index(skip, " " $1 " ")==0 { p=$2; sub(root, "", p); printf "%-34s %s\n", $1, p }' |
+    fzf --multi --prompt='repos> ' --header='TAB marca vários · ENTER confirma' | awk '{print $1}'
+}
+
+resolve_base() { # $1=repo $2=caminho
+  local b
+  b=$(repo_conf "$1" base)
+  [[ -n $b ]] && { printf '%s' "$b"; return; }
+  if git -C "$2" show-ref --verify -q "refs/remotes/origin/$DEFAULT_BASE"; then printf '%s' "$DEFAULT_BASE"; return; fi
+  b=$(git -C "$2" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  printf '%s' "${b#origin/}" | grep . || printf main
+}
+
+pkg_manager() {
+  if [[ -f $1/bun.lock || -f $1/bun.lockb ]]; then echo bun
+  elif [[ -f $1/pnpm-lock.yaml ]]; then echo pnpm
+  elif [[ -f $1/yarn.lock ]]; then echo yarn
+  elif [[ -f $1/package.json ]]; then echo npm
+  fi
+}
+
+install_cmd() {
+  case $(pkg_manager "$1") in
+    bun) echo 'bun install --frozen-lockfile || bun install' ;;
+    pnpm) echo 'pnpm install --frozen-lockfile || pnpm install' ;;
+    yarn) echo 'yarn install --frozen-lockfile || yarn install' ;;
+    npm) [[ -f $1/package-lock.json ]] && echo 'npm ci || npm install' || echo 'npm install' ;;
+  esac
+}
+
+run_cmd() { # $1=repo $2=worktree — comando que sobe o serviço (vazio = não sobe)
+  local c pm script
+  c=$(repo_conf "$1" run)
+  [[ $c == none ]] && return 0
+  [[ -n $c ]] && { printf '%s' "$c"; return; }
+  pm=$(pkg_manager "$2"); [[ -n $pm ]] || return 0
+  for script in dev start; do
+    if node -e 'process.exit((require(process.argv[1]).scripts||{})[process.argv[2]]?0:1)' "$2/package.json" "$script" 2>/dev/null; then
+      printf '%s run %s' "$pm" "$script"; return
+    fi
+  done
+}
+
+use_nvm() { # respeita .nvmrc quando existir
+  [[ -f .nvmrc ]] || return 0
+  local nvm="${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+  [[ -s $nvm ]] || return 0
+  set +eu; . "$nvm"; nvm use --silent >/dev/null || warn "nvm use falhou em $PWD"; set -eu
+}
+
+# ── feature ─────────────────────────────────────────────────────────────────
+normalize_id() {
+  local id=$1
+  [[ -n $ID_PREFIX && $id =~ ^[0-9]+$ ]] && id="$ID_PREFIX$id"
+  [[ -n $ID_PREFIX && ${id^^} == "${ID_PREFIX^^}"* ]] && id="$ID_PREFIX${id:${#ID_PREFIX}}"
+  printf '%s' "$id"
+}
+
+find_feature_dir() { # sobe a partir de $1 até achar .feat/
+  local d
+  d=$(readlink -f "${1:-$PWD}")
+  while [[ $d != / ]]; do [[ -f $d/.feat/feature.conf ]] && { printf '%s' "$d"; return 0; }; d=${d%/*}; d=${d:-/}; done
+  return 1
+}
+
+load_feature() { # $1 = id/nome (opcional; senão usa a pasta atual)
+  if [[ -n ${1:-} ]]; then
+    load_profile
+    FDIR="$FEATURES_DIR/$(normalize_id "$1")"
+    [[ -f $FDIR/.feat/feature.conf ]] || die "Feature '$1' não existe em $FEATURES_DIR"
+  else
+    FDIR=$(find_feature_dir) || die "Você não está dentro de uma feature (ou passe o ID)."
+  fi
+  # shellcheck source=/dev/null
+  source "$FDIR/.feat/feature.conf" # NAME BRANCH PROFILE
+  load_profile "$PROFILE"
+}
+
+feature_repos() { # linhas "nome|origem|base"
+  [[ -f $FDIR/.feat/repos ]] && grep -v '^$' "$FDIR/.feat/repos" || true
+}
+
+list_features() {
+  [[ -d $FEATURES_DIR ]] || return 0
+  find "$FEATURES_DIR" -mindepth 3 -maxdepth 3 -path '*/.feat/feature.conf' 2>/dev/null | sed 's|/\.feat/feature.conf$||' | sort
+}
+
+pick_feature() {
+  need fzf
+  local names
+  names=$(list_features | sed 's|.*/||')
+  [[ -n $names ]] || die "Nenhuma feature em $FEATURES_DIR. Crie com: feat new"
+  fzf --prompt='feature> ' --preview "'$FEAT_BIN' status {}" --preview-window=right,60% <<<"$names"
+}
+
+write_mprocs() {
+  local name src base wt cmd n=0
+  {
+    echo "# Gerado pelo feat — não edite (rode 'feat up' de novo para regenerar)."
+    echo "procs:"
+    while IFS='|' read -r name src base; do
+      wt=$FDIR/$name
+      [[ -d $wt ]] || continue
+      cmd=$(run_cmd "$name" "$wt")
+      [[ -n $cmd ]] || continue
+      printf '  "%s":\n    cmd: ["%s", "_run", "%s"]\n    cwd: "%s"\n' "$name" "$FEAT_BIN" "$wt" "$wt"
+      n=$((n + 1))
+    done < <(feature_repos)
+  } >"$FDIR/.feat/mprocs.yaml"
+  ((n > 0))
+}
+
+check_running() { # define RUNNING_PID e RUNNING_NAME (vazios se nada roda)
+  RUNNING_PID='' RUNNING_NAME=''
+  [[ -f $RUNNING_FILE ]] || return 0
+  local name pid
+  read -r name pid <"$RUNNING_FILE" || true
+  if [[ -n ${pid:-} && $(cat "/proc/$pid/comm" 2>/dev/null) == mprocs ]]; then RUNNING_PID=$pid RUNNING_NAME=$name
+  else rm -f "$RUNNING_FILE"; fi
+  return 0
+}
+is_running() { check_running; [[ -n $RUNNING_PID && $RUNNING_NAME == "$1" ]]; }
+
+descendants() { local c; for c in $(pgrep -P "$1" || true); do echo "$c"; descendants "$c"; done; }
+
+stop_running() { # mata o mprocs da feature rodando e toda a árvore de processos dele
+  local pids p alive
+  check_running
+  [[ -n $RUNNING_PID ]] || return 0
+  info "Parando ${B}$RUNNING_NAME${N}"
+  mapfile -t pids < <(descendants "$RUNNING_PID"; echo "$RUNNING_PID")
+  kill -TERM "${pids[@]}" 2>/dev/null || true
+  for _ in {1..20}; do
+    alive=0; for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null && alive=1; done
+    ((alive)) || break; sleep 0.25
+  done
+  kill -KILL "${pids[@]}" 2>/dev/null || true
+  rm -f "$RUNNING_FILE"
+  ok "serviços de $RUNNING_NAME parados"
+}
+
+free_ports() { # mata o que estiver escutando nas portas (PORT=) dos .env da feature
+  local name src base port pid
+  while IFS='|' read -r name src base; do
+    for port in $(grep -hoE '^PORT=[0-9]+' "$FDIR/$name"/.env* 2>/dev/null | cut -d= -f2 | sort -u); do
+      for pid in $(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u); do
+        warn "porta $port ocupada por $(cat "/proc/$pid/comm" 2>/dev/null) (pid $pid) — encerrando"
+        kill -TERM "$pid" 2>/dev/null || true
+      done
+    done
+  done < <(feature_repos)
+  return 0
+}
+
+copy_env() { # override do perfil primeiro; o resto vem do repo principal
+  local name=$1 src=$2 dest=$3 f
+  if [[ -d $ENV_DIR/$name ]]; then
+    for f in "$ENV_DIR/$name"/.[!.]* "$ENV_DIR/$name"/*; do
+      [[ -f $f && ! -e $dest/${f##*/} ]] && cp "$f" "$dest/" && ok "$name: ${f##*/} (template)"
+    done
+  fi
+  for f in "$src"/.env*; do
+    [[ -f $f ]] || continue
+    case $f in *.example | *.sample | *.template) continue ;; esac
+    [[ -e $dest/${f##*/} ]] || { cp "$f" "$dest/" && ok "$name: ${f##*/} (copiado do repo)"; }
+  done
+  return 0
+}
+
+add_repo() { # $1=nome $2=origem $3=base forçada (opcional). Cria a worktree na feature.
+  local name=$1 src=$2 base dest=$FDIR/$1 wt
+  if grep -q "^$name|" "$FDIR/.feat/repos" 2>/dev/null && [[ -d $dest ]]; then warn "$name já está na feature"; return 1; fi
+  [[ -e $dest ]] && { warn "$dest já existe e não é da feature — pulando"; return 1; }
+  git -C "$src" fetch origin --prune --quiet 2>/dev/null || warn "$name: fetch falhou (seguindo offline)"
+  base=${3:-$(resolve_base "$name" "$src")}
+
+  wt=$(git -C "$src" worktree list --porcelain | awk -v b="branch refs/heads/$BRANCH" '/^worktree /{p=substr($0,10)} $0==b{print p}')
+  if [[ -n $wt ]]; then
+    [[ $(readlink -f "$wt") == $(readlink -f "$src") ]] &&
+      { warn "$name: $BRANCH está em uso no repo principal ($src). Troque de branch lá."; return 1; }
+    if ((MOVE)); then
+      git -C "$src" worktree move "$wt" "$dest" && ok "$name: worktree movida de $wt"
+    else
+      warn "$name: $BRANCH já está em uso em $wt — use --move para trazê-la para a feature"; return 1
+    fi
+  elif git -C "$src" show-ref --verify -q "refs/heads/$BRANCH"; then
+    git -C "$src" worktree add -q "$dest" "$BRANCH" && ok "$name: branch local existente"
+  elif git -C "$src" show-ref --verify -q "refs/remotes/origin/$BRANCH"; then
+    git -C "$src" worktree add -q --track -b "$BRANCH" "$dest" "origin/$BRANCH" && ok "$name: branch do remoto (checkout)"
+  else
+    git -C "$src" show-ref --verify -q "refs/remotes/origin/$base" || { warn "$name: origin/$base não existe"; return 1; }
+    git -C "$src" worktree add -q --no-track -b "$BRANCH" "$dest" "origin/$base" && ok "$name: nova branch a partir de origin/$base"
+  fi
+  printf '%s|%s|%s\n' "$name" "$src" "$base" >>"$FDIR/.feat/repos"
+  copy_env "$name" "$src" "$dest"
+  return 0
+}
+
+install_deps() { # instala em paralelo nos repos sem node_modules
+  local name pids=() names=() i
+  for name in "$@"; do
+    [[ -f $FDIR/$name/package.json && ! -d $FDIR/$name/node_modules ]] || continue
+    mkdir -p "$FDIR/.feat/logs"
+    "$FEAT_BIN" _install "$FDIR/$name" >"$FDIR/.feat/logs/install-$name.log" 2>&1 &
+    pids+=($!) names+=("$name")
+  done
+  ((${#pids[@]})) || return 0
+  info "Instalando dependências (${#pids[@]} repos em paralelo)…"
+  for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then ok "${names[$i]}"
+    else warn "${names[$i]}: falhou — veja $FDIR/.feat/logs/install-${names[$i]}.log"; fi
+  done
+  return 0
+}
+
+open_feature() {
+  local -a cmd
+  read -ra cmd <<<"$OPEN_CMD"
+  command -v "${cmd[0]}" >/dev/null || { warn "'${cmd[0]}' não encontrado — abra $FDIR manualmente"; return 0; }
+  "${cmd[@]}" "$FDIR" || warn "falha ao abrir: $OPEN_CMD $FDIR"
+}
+
+# ── comandos ────────────────────────────────────────────────────────────────
+cmd_new() {
+  local fix=0 base='' open=1 install=1 id='' repos=() q r ans
+  MOVE=0
+  while (($#)); do
+    case $1 in
+      --fix) fix=1 ;; --base) base=$2; shift ;; --move) MOVE=1 ;;
+      --no-open) open=0 ;; --no-install) install=0 ;;
+      -*) die "Opção desconhecida: $1" ;;
+      *) if [[ -z $id ]]; then id=$1; else repos+=("$1"); fi ;;
+    esac
+    shift
+  done
+  load_profile
+  if [[ -z $id ]]; then
+    read -rp "ID da feature (ex: 1036): " id
+    [[ -n $id ]] || die "ID vazio"
+    ((fix)) || { read -rp "É fix? [s/N] " ans; [[ $ans == [sSyY]* ]] && fix=1; }
+  fi
+  NAME=$(normalize_id "$id")
+  BRANCH=$( ((fix)) && echo "$FIX_PREFIX$NAME" || echo "$FEATURE_PREFIX$NAME")
+  FDIR=$FEATURES_DIR/$NAME
+  if [[ -f $FDIR/.feat/feature.conf ]]; then
+    local old=$BRANCH; source "$FDIR/.feat/feature.conf"
+    [[ $old == "$BRANCH" ]] || warn "feature já existe com a branch $BRANCH — usando ela"
+  fi
+  if ((${#repos[@]} == 0)); then
+    mapfile -t repos < <(pick_repos "$(feature_repos | cut -d'|' -f1 | tr '\n' ' ')")
+    ((${#repos[@]})) || die "Nenhum repo escolhido"
+  fi
+
+  mkdir -p "$FDIR/.feat"
+  [[ -f $FDIR/.feat/feature.conf ]] ||
+    printf 'NAME=%q\nBRANCH=%q\nPROFILE=%q\n' "$NAME" "$BRANCH" "$PROFILE" >"$FDIR/.feat/feature.conf"
+  info "Feature ${B}$NAME${N} → branch ${C}$BRANCH${N}"
+
+  local added=()
+  for q in "${repos[@]}"; do
+    r=$(resolve_repo "$q")
+    add_repo "${r%%|*}" "${r#*|}" "$base" && added+=("${r%%|*}") || true
+  done
+  ((install)) && install_deps "${added[@]}"
+  write_mprocs || true
+  info "Pronto: $FDIR"
+  ((open)) && open_feature
+  return 0
+}
+
+cmd_add() {
+  local feature='' repos=() q r install=1
+  MOVE=0
+  while (($#)); do
+    case $1 in
+      -f | --feature) feature=$2; shift ;; --move) MOVE=1 ;; --no-install) install=0 ;;
+      -*) die "Opção desconhecida: $1" ;; *) repos+=("$1") ;;
+    esac
+    shift
+  done
+  load_feature "$feature"
+  if ((${#repos[@]} == 0)); then
+    mapfile -t repos < <(pick_repos "$(feature_repos | cut -d'|' -f1 | tr '\n' ' ')")
+    ((${#repos[@]})) || die "Nenhum repo escolhido"
+  fi
+  info "Adicionando à ${B}$NAME${N} ($BRANCH)"
+  local added=()
+  for q in "${repos[@]}"; do
+    r=$(resolve_repo "$q")
+    add_repo "${r%%|*}" "${r#*|}" && added+=("${r%%|*}") || true
+  done
+  if ((install)); then install_deps "${added[@]}"; fi
+  write_mprocs || true
+  if is_running "$NAME"; then info "Serviços rodando: rode 'feat up' de novo para incluir os novos."; fi
+  return 0
+}
+
+cmd_open() {
+  load_profile
+  local id=${1:-}
+  [[ -n $id ]] || id=$(pick_feature) || exit 0
+  load_feature "$id"
+  open_feature
+}
+
+cmd_up() {
+  need mprocs
+  load_feature "${1:-}"
+  stop_running
+  free_ports
+  write_mprocs || die "Nenhum repo da feature tem serviço para rodar."
+  mkdir -p "$FEAT_STATE_DIR"
+  printf '%s %s\n' "$NAME" "$$" >"$RUNNING_FILE"
+  printf '\e]0;feat: %s\a' "$NAME"
+  exec mprocs --config "$FDIR/.feat/mprocs.yaml"
+}
+
+cmd_down() { check_running; if [[ -n $RUNNING_PID ]]; then stop_running; else ok "nada rodando"; fi; }
+
+repo_line() { # status de 1 repo
+  local name=$1 base=$2 wt=$3 br dirty ab ahead behind behind_base up
+  [[ -d $wt ]] || { printf '  %-30s %s\n' "$name" "${R}worktree sumiu${N}"; return; }
+  br=$(git -C "$wt" branch --show-current)
+  dirty=$(git -C "$wt" status --porcelain | wc -l)
+  up=''
+  if ab=$(git -C "$wt" rev-list --left-right --count '@{u}...HEAD' 2>/dev/null); then
+    read -r behind ahead <<<"$ab"
+    ((ahead)) && up+=" ${Y}↑$ahead${N}"; ((behind)) && up+=" ${Y}↓$behind${N}"
+  else
+    ahead=$(git -C "$wt" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)
+    up=" ${D}sem upstream${N}"; ((ahead)) && up+=" ${Y}↑$ahead não enviados${N}"
+  fi
+  behind_base=$(git -C "$wt" rev-list --count "HEAD..origin/$base" 2>/dev/null || echo '?')
+  printf '  %-30s %-28s %s%s%s\n' "$name" "${C}$br${N}" \
+    "$( ((dirty)) && echo "${Y}●$dirty alterados${N}" || echo "${G}limpo${N}")" "$up" \
+    "$([[ $behind_base != 0 ]] && echo " ${D}($base +$behind_base)${N}")"
+  return 0
+}
+
+cmd_status() {
+  local dirs=() d name src base
+  if [[ -n ${1:-} ]] || find_feature_dir >/dev/null; then load_feature "${1:-}"; dirs=("$FDIR")
+  else load_profile; mapfile -t dirs < <(list_features); fi
+  ((${#dirs[@]})) || { echo "Nenhuma feature em $FEATURES_DIR"; return 0; }
+  check_running
+  for d in "${dirs[@]}"; do
+    FDIR=$d; source "$d/.feat/feature.conf"
+    printf '%s%s\n' "${B}$NAME${N} ${D}$BRANCH${N}" "$([[ $RUNNING_NAME == "$NAME" ]] && echo " ${G}▶ rodando${N}")"
+    while IFS='|' read -r name src base; do repo_line "$name" "$base" "$d/$name"; done < <(feature_repos)
+  done
+  return 0
+}
+
+cmd_ls() {
+  load_profile
+  local d
+  check_running
+  while IFS= read -r d; do
+    printf '%-20s %s repos%s\n' "${d##*/}" "$(feature_repos_count "$d")" "$([[ $RUNNING_NAME == "${d##*/}" ]] && echo " ${G}▶ rodando${N}")"
+  done < <(list_features)
+  return 0
+}
+feature_repos_count() { grep -c . "$1/.feat/repos" 2>/dev/null || true; }
+
+cmd_sync() {
+  load_feature "${1:-}"
+  local name src base wt
+  info "Atualizando ${B}$NAME${N} com a base ($SYNC_STRATEGY)"
+  while IFS='|' read -r name src base; do
+    wt=$FDIR/$name
+    [[ -z $(git -C "$wt" status --porcelain --untracked-files=no) ]] || { warn "$name: alterações não commitadas — pulando"; continue; }
+    git -C "$wt" fetch origin --quiet || { warn "$name: fetch falhou"; continue; }
+    if [[ $SYNC_STRATEGY == rebase ]]; then
+      git -C "$wt" rebase --quiet "origin/$base" && ok "$name: rebase em origin/$base" ||
+        { warn "$name: CONFLITO — resolva em $wt (ou git rebase --abort)"; }
+    else
+      git -C "$wt" merge --quiet --no-edit "origin/$base" && ok "$name: merge de origin/$base" ||
+        { warn "$name: CONFLITO — resolva em $wt (ou git merge --abort)"; }
+    fi
+  done < <(feature_repos)
+  return 0
+}
+
+cmd_rm() {
+  local id='' force=0 yes=0 delbranch=0 name src base wt problems=() n ans
+  while (($#)); do
+    case $1 in --force) force=1 ;; -y | --yes) yes=1 ;; --delete-branch) delbranch=1 ;; *) id=$1 ;; esac
+    shift
+  done
+  load_profile
+  [[ -n $id ]] || id=$(pick_feature) || exit 0
+  load_feature "$id"
+  while IFS='|' read -r name src base; do
+    wt=$FDIR/$name; [[ -d $wt ]] || continue
+    n=$(git -C "$wt" status --porcelain | wc -l); ((n)) && problems+=("$name: $n arquivos alterados/não rastreados")
+    if git -C "$wt" rev-parse -q --verify '@{u}' >/dev/null; then n=$(git -C "$wt" rev-list --count '@{u}..HEAD')
+    else n=$(git -C "$wt" rev-list --count HEAD --not --remotes); fi
+    ((n)) && problems+=("$name: $n commits não enviados")
+  done < <(feature_repos)
+  if ((${#problems[@]})); then
+    printf '  %s\n' "${problems[@]/#/${Y}!${N} }"
+    ((force)) || die "Nada removido. Resolva acima ou use --force (PERDE essas alterações)."
+  fi
+  if ((!yes)); then read -rp "Remover $NAME ($(feature_repos_count "$FDIR") repos)? [s/N] " ans; [[ $ans == [sSyY]* ]] || exit 0; fi
+  if is_running "$NAME"; then stop_running; fi
+  while IFS='|' read -r name src base; do
+    wt=$FDIR/$name
+    if [[ -d $wt ]]; then git -C "$src" worktree remove --force "$wt" && ok "$name: worktree removida"; fi
+    git -C "$src" worktree prune
+    if ((delbranch)); then
+      git -C "$src" branch -d "$BRANCH" 2>/dev/null && ok "$name: branch $BRANCH apagada" ||
+        warn "$name: branch não apagada (não mergeada? use git branch -D manualmente)"
+    fi
+  done < <(feature_repos)
+  rm -rf "$FDIR"
+  ok "$NAME removida"
+}
+
+cmd_menu() { # menu fzf com as ações; mostra só as que fazem sentido na pasta atual
+  need fzf
+  local opts choice in_feature=0 fdir
+  if fdir=$(find_feature_dir); then in_feature=1; fi
+  opts="new      Nova feature (ou adicionar repos a uma existente)
+open     Abrir uma feature numa janela nova do Zed"
+  ((in_feature)) && opts+="
+up       Rodar os serviços DESTA feature (para a que estiver rodando)
+add      Adicionar repo a esta feature
+status   Status dos repos desta feature
+sync     Trazer a base (develop) para esta feature"
+  opts+="
+down     Parar os serviços que estão rodando
+ls       Listar features
+rm       Remover uma feature
+doctor   Checar o setup
+help     Todos os comandos"
+  choice=$(fzf --prompt='feat> ' --header="$( ((in_feature)) && echo "feature: ${fdir##*/}" || echo 'fora de uma feature')" \
+    --no-sort <<<"$opts" | awk '{print $1}') || exit 0
+  [[ -n $choice ]] || exit 0
+  printf '%s\n\n' "${D}\$ feat $choice${N}"
+  main "$choice"
+}
+
+cmd_repos() { load_profile; repo_index | awk -F'|' -v r="$REPOS_ROOT/" '{p=$2; sub(r,"",p); printf "%-34s %s\n", $1, p}'; }
+
+cmd_doctor() {
+  local t okc=1
+  for t in git fzf mprocs zed node ss; do
+    if command -v "$t" >/dev/null; then ok "$t"; else warn "$t não encontrado"; okc=0; fi
+  done
+  command -v mprocs >/dev/null || echo "    instale com: $FEAT_CONFIG_DIR/install.sh --mprocs"
+  load_profile && ok "perfil $PROFILE (repos: $REPOS_ROOT, features: $FEATURES_DIR, env: $ENV_DIR)"
+  ok "$(repo_index | wc -l) repos encontrados"
+  ((okc))
+}
+
+cmd_help() {
+  cat <<EOF
+${B}feat${N} — uma pasta por feature, com uma worktree por repo.
+
+  ${B}feat new${N} [id] [repos…] [--fix] [--base X] [--move] [--no-install] [--no-open]
+      Cria/expande a feature. Sem argumentos: pergunta o ID e abre o fzf de repos.
+      A branch já existe? faz checkout. --move traz uma worktree antiga (ex.: Orca).
+  ${B}feat add${N} [repos…] [-f id] [--move] [--no-install]   adiciona repos à feature atual
+  ${B}feat open${N} [id]                      abre a feature numa janela nova do Zed
+  ${B}feat up${N} [id]                        para a feature que estiver rodando e sobe esta (mprocs)
+  ${B}feat down${N}                           para tudo
+  ${B}feat status${N} [id]                    branch, alterações, ↑↓, atraso vs base
+  ${B}feat ls${N}                             lista as features
+  ${B}feat sync${N} [id]                      traz origin/<base> para cada repo (merge|rebase)
+  ${B}feat rm${N} [id] [--delete-branch] [--force] [-y]
+  ${B}feat menu${N}                           menu com as ações (atalho alt+shift+f no Zed)
+  ${B}feat repos${N}                          repos que o perfil enxerga
+  ${B}feat doctor${N}                         checa dependências e config
+
+  Repos aceitam trecho do nome: 'feat new 1036 tasks models' → lexxy-tasks, lexxy-models.
+  Config: $FEAT_CONFIG_DIR  ·  Guia: $FEAT_CONFIG_DIR/__info.md
+EOF
+}
+
+# ── internos (usados pelo mprocs, completion e paralelismo) ──────────────────
+cmd__run() {
+  local wt=$1 cmd
+  cd "$wt"
+  FDIR=$(find_feature_dir "$wt") || die "fora de feature"
+  source "$FDIR/.feat/feature.conf"; load_profile "$PROFILE"
+  cmd=$(run_cmd "${wt##*/}" "$wt"); [[ -n $cmd ]] || die "sem comando para ${wt##*/}"
+  use_nvm
+  printf '%s\n' "${D}\$ $cmd${N}"
+  exec bash -c "$cmd"
+}
+cmd__install() { cd "$1"; use_nvm; local c; c=$(install_cmd "$1"); [[ -n $c ]] || exit 0; echo "\$ $c"; bash -c "$c"; }
+cmd__complete() {
+  load_profile >/dev/null 2>&1 || exit 0
+  case $1 in
+    repos) repo_index | cut -d'|' -f1 ;;
+    features) list_features | sed 's|.*/||' ;;
+  esac
+}
+cmd__pick() { load_profile; local id; id=$(pick_feature) || exit 1; printf '%s\n' "$FEATURES_DIR/$id"; }
+cmd__pick-dir() { load_feature "$1"; printf '%s\n' "$FDIR"; }
+
+main() {
+  local c=${1:-help}; (($#)) && shift
+  case $c in
+    new | add | open | up | down | status | ls | sync | rm | repos | doctor | help | menu) "cmd_$c" "$@" ;;
+    st) cmd_status "$@" ;;
+    -h | --help) cmd_help ;;
+    _run | _install | _complete | _pick | _pick-dir) "cmd_$c" "$@" ;;
+    *) die "Comando desconhecido: $c (veja: feat help)" ;;
+  esac
+}
+main "$@"
