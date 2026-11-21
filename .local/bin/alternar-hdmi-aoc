@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+exec 9>"${XDG_RUNTIME_DIR}/alternar-hdmi-aoc.lock"
+flock -n 9 || exit 0
+
+if ! entrada=$(/usr/bin/ddcutil --mfg AOC --model 24G30E --terse getvcp 60); then
+    notify-send 'Monitor AOC' 'Não foi possível ler a entrada de vídeo.'
+    exit 1
+fi
+
+case "$entrada" in
+    'VCP 60 SNC x11') destino=0x12 ;;
+    'VCP 60 SNC x12') destino=0x11 ;;
+    *)
+        notify-send 'Monitor AOC' 'Selecione HDMI 1 ou HDMI 2 para usar este atalho.'
+        exit 1
+        ;;
+esac
+
+if ! /usr/bin/ddcutil --mfg AOC --model 24G30E setvcp 60 "$destino"; then
+    notify-send 'Monitor AOC' 'Não foi possível trocar a entrada HDMI.'
+    exit 1
+fi

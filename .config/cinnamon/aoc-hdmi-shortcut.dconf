@@ -1,0 +1,9 @@
+# Caminho no dconf: /org/cinnamon/desktop/keybindings/
+# Ao restaurar num perfil com outros atalhos, use um slot livre e acrescente-o à lista existente.
+[/]
+custom-list=['custom0']
+
+[custom-keybindings/custom0]
+binding=['<Control><Alt>m']
+command='/home/gabriel/.local/bin/alternar-hdmi-aoc'
+name='Alternar HDMI do monitor AOC'
